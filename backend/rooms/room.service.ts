@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { WebSocket } from "ws";
 import type { RoomPlayer } from "@/types";
 import type { Room, RoomConnection } from "./room.types";
-import { generateRoomCode } from "./room-code.util";
+import { generateRoomCode, normalizeRoomCode } from "./room-code.util";
 
 const MAX_PLAYERS_PER_ROOM = 2;
 
@@ -45,12 +45,13 @@ export class RoomService {
   }
 
   joinRoom(roomCode: string, playerName: string, socket: WebSocket): Room {
-    const room = this.roomsByCode.get(roomCode);
+    const code = normalizeRoomCode(roomCode);
+    const room = this.roomsByCode.get(code);
 
     if (!room) {
       throw new RoomServiceError(
         "ROOM_NOT_FOUND",
-        `No room found for code ${roomCode}`,
+        `No room found for code ${code}`,
       );
     }
     if (room.host.socket === socket) {
@@ -62,7 +63,7 @@ export class RoomService {
     if (room.guest) {
       throw new RoomServiceError(
         "ROOM_FULL",
-        `Room ${roomCode} already has ${MAX_PLAYERS_PER_ROOM} players`,
+        `Room ${code} already has ${MAX_PLAYERS_PER_ROOM} players`,
       );
     }
 
