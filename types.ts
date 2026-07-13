@@ -1,10 +1,15 @@
 /**
- * WebSocket connection route
+ * WebSocket connection contract
  * -----------------------------------------------------------------------
- * Dynamic route used as the base for opening the battle room socket.
- * Example client usage:
+ * Single raw `ws`/`wss` endpoint shared by every client (no Socket.IO,
+ * no per-room route). Connect first, then send a CREATE_ROOM or
+ * JOIN_ROOM message to enter a room:
  *
- *   const socket = new WebSocket(getBattleSocketUrl(roomUuid));
+ *   const socket = new WebSocket(getBattleSocketUrl());
+ *   socket.send(JSON.stringify({
+ *     type: BattleMessageType.CREATE_ROOM,
+ *     payload: { player_name },
+ *   }));
  *
  * Adjust the scheme/host resolution to match your env config (ws vs wss).
  */
@@ -18,7 +23,9 @@
  * in either direction. Mirrors the MessageType pattern used elsewhere.
  */
 export const enum BattleMessageType {
+  CREATE_ROOM = "create_room",
   JOIN_ROOM = "join_room",
+  OPPONENT_JOINED = "opponent_joined",
   PLAYER_READY = "player_ready",
   MATCH_START = "match_start",
   TURN_START = "turn_start",
@@ -103,6 +110,16 @@ export interface Scoreboard {
 }
 
 /**
+ * Minimal player identity used during the lobby phase (create/join room),
+ * before character selection has produced a full PlayerState.
+ */
+export interface RoomPlayer {
+  player_id: number;
+  name: string;
+  is_host: boolean;
+}
+
+/**
  * One player's full battle-perspective state. Each connected client
  * receives its own PlayerState plus the opponent's (see MatchStartPayload).
  */
@@ -123,10 +140,22 @@ export interface TauntLine {
 // Receive payloads (backend -> frontend): {Type}Payload
 // -----------------------------------------------------------------------
 
+export interface CreateRoomPayload {
+  room_uuid: string;
+  room_code: string;
+  player: RoomPlayer;
+}
+
 export interface JoinRoomPayload {
   room_uuid: string;
-  player: PlayerState;
-  opponent: Pick<PlayerState, "player_id" | "name" | "scoreboard"> | null;
+  room_code: string;
+  player: RoomPlayer;
+  opponent: RoomPlayer | null;
+}
+
+export interface OpponentJoinedPayload {
+  room_uuid: string;
+  opponent: RoomPlayer;
 }
 
 export interface PlayerReadyPayload {
@@ -201,7 +230,9 @@ export interface ErrorPayload {
 }
 
 export type BattlePayload =
+  | CreateRoomPayload
   | JoinRoomPayload
+  | OpponentJoinedPayload
   | PlayerReadyPayload
   | MatchStartPayload
   | TurnStartPayload
@@ -215,7 +246,9 @@ export type BattlePayload =
   | ErrorPayload;
 
 export type TypedBattlePayload =
+  | { type: BattleMessageType.CREATE_ROOM; payload: CreateRoomPayload }
   | { type: BattleMessageType.JOIN_ROOM; payload: JoinRoomPayload }
+  | { type: BattleMessageType.OPPONENT_JOINED; payload: OpponentJoinedPayload }
   | { type: BattleMessageType.PLAYER_READY; payload: PlayerReadyPayload }
   | { type: BattleMessageType.MATCH_START; payload: MatchStartPayload }
   | { type: BattleMessageType.TURN_START; payload: TurnStartPayload }
@@ -248,8 +281,12 @@ export type BattleMessage = BaseBattleMessage & TypedBattlePayload;
 // Send payloads (frontend -> backend): {Type}RequestPayload
 // -----------------------------------------------------------------------
 
+export interface CreateRoomRequestPayload {
+  player_name: string;
+}
+
 export interface JoinRoomRequestPayload {
-  room_uuid: string;
+  room_code: string;
   player_name: string;
 }
 
@@ -273,6 +310,7 @@ export interface LeaveRoomRequestPayload {
 }
 
 export type BattleRequestPayloadData =
+  | CreateRoomRequestPayload
   | JoinRoomRequestPayload
   | PlayerReadyRequestPayload
   | MoveSelectRequestPayload
@@ -280,6 +318,7 @@ export type BattleRequestPayloadData =
   | LeaveRoomRequestPayload;
 
 export type TypedBattleRequestPayload =
+  | { type: BattleMessageType.CREATE_ROOM; payload: CreateRoomRequestPayload }
   | { type: BattleMessageType.JOIN_ROOM; payload: JoinRoomRequestPayload }
   | { type: BattleMessageType.PLAYER_READY; payload: PlayerReadyRequestPayload }
   | { type: BattleMessageType.MOVE_SELECT; payload: MoveSelectRequestPayload }
@@ -287,10 +326,11 @@ export type TypedBattleRequestPayload =
   | { type: BattleMessageType.LEAVE_ROOM; payload: LeaveRoomRequestPayload };
 
 /**
- * Envelope sent to the backend over the socket.
+ * Envelope sent to the backend over the socket. `room_uuid` is omitted for
+ * CREATE_ROOM/JOIN_ROOM since the client doesn't have one yet at that point.
  */
 export type SendBattleMessage = {
-  room_uuid: string;
+  room_uuid?: string;
 } & TypedBattleRequestPayload;
 
 // -----------------------------------------------------------------------
