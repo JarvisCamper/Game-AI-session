@@ -1,9 +1,178 @@
+"use client";
+
+import { useForm } from "react-hook-form";
+
+type CreateRoomForm = {
+  playerName: string;
+};
+
+type JoinRoomForm = {
+  roomCode: string;
+  playerName: string;
+};
+
+function hasTypedValue(values: Record<string, string>) {
+  return Object.values(values).some((value) => value.trim().length > 0);
+}
+
 export default function LandingPage() {
-    return (
-        <>
-            <div className="h-screen w-screen bg-red-400">
-                Hello
-            </div>
-        </>
-    )
+  const createForm = useForm<CreateRoomForm>({
+    defaultValues: { playerName: "" },
+  });
+  const joinForm = useForm<JoinRoomForm>({
+    defaultValues: { roomCode: "", playerName: "" },
+  });
+
+  const createValues = createForm.watch();
+  const joinValues = joinForm.watch();
+
+  const createActive = hasTypedValue(createValues);
+  const joinActive = hasTypedValue(joinValues);
+
+  const createDisabled = joinActive;
+  const joinDisabled = createActive;
+
+  const onCreateSubmit = createForm.handleSubmit(() => {
+    // UI only — wire up later
+  });
+
+  const onJoinSubmit = joinForm.handleSubmit(() => {
+    // UI only — wire up later
+  });
+
+  return (
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-16 text-[var(--landing-ink)]">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_20%_10%,#1a3a32_0%,transparent_45%),radial-gradient(ellipse_at_85%_20%,#3d2a12_0%,transparent_40%),linear-gradient(165deg,#0c1210_0%,#15221c_48%,#1a1510_100%)]"
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 opacity-[0.07] [background-image:repeating-linear-gradient(-12deg,transparent_0_11px,#fff_11px_12px)]"
+      />
+
+      <div className="relative z-10 w-full max-w-4xl">
+        <header className="mb-12 text-center">
+          <p className="font-[family-name:var(--font-geist-mono)] text-xs tracking-[0.35em] text-[#c4a574] uppercase">
+            Office Arena
+          </p>
+          <h1 className="mt-3 font-[family-name:var(--font-geist-sans)] text-5xl font-semibold tracking-tight text-[#f2ebe0] sm:text-6xl">
+            Battle Lobby
+          </h1>
+          <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-[#a8b5ae]">
+            Create a room or join an existing one. Start typing in one form to
+            lock the other.
+          </p>
+        </header>
+
+        <div className="grid gap-6 md:grid-cols-2">
+          {/* Create room */}
+          <section
+            aria-disabled={createDisabled}
+            className={`rounded-2xl border border-[#2f453c] bg-[#101916]/80 p-6 shadow-[0_24px_60px_rgba(0,0,0,0.35)] backdrop-blur-sm transition ${
+              createDisabled
+                ? "pointer-events-none opacity-40"
+                : "opacity-100"
+            }`}
+          >
+            <h2 className="font-[family-name:var(--font-geist-sans)] text-xl font-medium text-[#f2ebe0]">
+              Create room
+            </h2>
+            <p className="mt-1 text-sm text-[#8fa098]">
+              Open a new match and share the code.
+            </p>
+
+            <form onSubmit={onCreateSubmit} className="mt-6 space-y-4">
+              <div>
+                <label
+                  htmlFor="create-player-name"
+                  className="mb-1.5 block text-xs tracking-wide text-[#c4a574] uppercase"
+                >
+                  Player name
+                </label>
+                <input
+                  id="create-player-name"
+                  type="text"
+                  disabled={createDisabled}
+                  autoComplete="off"
+                  placeholder="e.g. Night Owl"
+                  className="w-full rounded-lg border border-[#2f453c] bg-[#0c1210] px-3 py-2.5 text-sm text-[#f2ebe0] outline-none transition placeholder:text-[#5c6b64] focus:border-[#c4a574] disabled:cursor-not-allowed"
+                  {...createForm.register("playerName")}
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={createDisabled || !createActive}
+                className="w-full rounded-lg bg-[#c4a574] px-4 py-2.5 text-sm font-medium text-[#1a1510] transition hover:bg-[#d4b888] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Create room
+              </button>
+            </form>
+          </section>
+
+          {/* Join room */}
+          <section
+            aria-disabled={joinDisabled}
+            className={`rounded-2xl border border-[#2f453c] bg-[#101916]/80 p-6 shadow-[0_24px_60px_rgba(0,0,0,0.35)] backdrop-blur-sm transition ${
+              joinDisabled ? "pointer-events-none opacity-40" : "opacity-100"
+            }`}
+          >
+            <h2 className="font-[family-name:var(--font-geist-sans)] text-xl font-medium text-[#f2ebe0]">
+              Join room
+            </h2>
+            <p className="mt-1 text-sm text-[#8fa098]">
+              Enter a room code to jump into a match.
+            </p>
+
+            <form onSubmit={onJoinSubmit} className="mt-6 space-y-4">
+              <div>
+                <label
+                  htmlFor="join-room-code"
+                  className="mb-1.5 block text-xs tracking-wide text-[#c4a574] uppercase"
+                >
+                  Room code
+                </label>
+                <input
+                  id="join-room-code"
+                  type="text"
+                  disabled={joinDisabled}
+                  autoComplete="off"
+                  placeholder="Paste room UUID"
+                  className="w-full rounded-lg border border-[#2f453c] bg-[#0c1210] px-3 py-2.5 text-sm text-[#f2ebe0] outline-none transition placeholder:text-[#5c6b64] focus:border-[#c4a574] disabled:cursor-not-allowed"
+                  {...joinForm.register("roomCode")}
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="join-player-name"
+                  className="mb-1.5 block text-xs tracking-wide text-[#c4a574] uppercase"
+                >
+                  Player name
+                </label>
+                <input
+                  id="join-player-name"
+                  type="text"
+                  disabled={joinDisabled}
+                  autoComplete="off"
+                  placeholder="e.g. Micromanager"
+                  className="w-full rounded-lg border border-[#2f453c] bg-[#0c1210] px-3 py-2.5 text-sm text-[#f2ebe0] outline-none transition placeholder:text-[#5c6b64] focus:border-[#c4a574] disabled:cursor-not-allowed"
+                  {...joinForm.register("playerName")}
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={joinDisabled || !joinActive}
+                className="w-full rounded-lg bg-[#c4a574] px-4 py-2.5 text-sm font-medium text-[#1a1510] transition hover:bg-[#d4b888] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Join room
+              </button>
+            </form>
+          </section>
+        </div>
+      </div>
+    </main>
+  );
 }
