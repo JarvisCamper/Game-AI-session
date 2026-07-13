@@ -14,13 +14,29 @@ import { buildError, buildMessage, isRecord, parseEnvelope } from "./envelope";
  * Thin transport layer: parses/validates incoming frames and delegates to
  * RoomService. No room/game logic lives here.
  */
+const LOG_PREFIX = "[ws-gateway]";
+
 export function registerConnectionGateway(
   wss: WebSocketServer,
   roomService: RoomService = new RoomService(),
 ): void {
-  wss.on("connection", (socket) => {
+  wss.on("connection", (socket, request) => {
+    console.log(LOG_PREFIX, "client connected", {
+      url: request.url,
+      remoteAddress: request.socket.remoteAddress,
+    });
+
     socket.on("message", (raw) => handleMessage(socket, raw, roomService));
-    socket.on("close", () => roomService.removeConnection(socket));
+    socket.on("error", (error) => {
+      console.error(LOG_PREFIX, "socket error", error);
+    });
+    socket.on("close", (code, reason) => {
+      console.log(LOG_PREFIX, "client disconnected", {
+        code,
+        reason: reason.toString() || "(none)",
+      });
+      roomService.removeConnection(socket);
+    });
   });
 }
 
@@ -29,9 +45,12 @@ function handleMessage(
   raw: RawData,
   roomService: RoomService,
 ): void {
+  const text = raw.toString();
+  console.log(LOG_PREFIX, "message ←", text);
+
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw.toString());
+    parsed = JSON.parse(text);
   } catch {
     return send(socket, buildError("INVALID_JSON", "Message must be valid JSON"));
   }
@@ -102,7 +121,11 @@ function handleJoinRoom(
 
   let room;
   try {
-    room = roomService.joinRoom(request.room_code.trim(), request.player_name.trim(), socket);
+    room = roomService.joinRoom(
+      request.room_code.trim().toUpperCase(),
+      request.player_name.trim(),
+      socket,
+    );
   } catch (error) {
     if (error instanceof RoomServiceError) {
       return send(socket, buildError(error.code, error.message));
@@ -130,6 +153,13 @@ function handleJoinRoom(
 
 function send(socket: WebSocket, message: unknown): void {
   if (socket.readyState === socket.OPEN) {
-    socket.send(JSON.stringify(message));
+    const body = JSON.stringify(message);
+    console.log(LOG_PREFIX, "message →", body);
+    socket.send(body);
+    return;
   }
+  console.warn(LOG_PREFIX, "send skipped — socket not open", {
+    readyState: socket.readyState,
+    message,
+  });
 }

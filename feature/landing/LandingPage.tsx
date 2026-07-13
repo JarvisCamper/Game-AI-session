@@ -1,6 +1,13 @@
 "use client";
 
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
+import {
+  createRoomOverSocket,
+  joinRoomOverSocket,
+} from "@/lib/ws/battle-socket";
+import { saveLobbySession } from "@/lib/ws/lobby-session";
 
 type CreateRoomForm = {
   playerName: string;
@@ -16,6 +23,10 @@ function hasTypedValue(values: Record<string, string>) {
 }
 
 export default function LandingPage() {
+  const router = useRouter();
+  const [busy, setBusy] = useState<"create" | "join" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
   const createForm = useForm<CreateRoomForm>({
     defaultValues: { playerName: "" },
   });
@@ -29,15 +40,54 @@ export default function LandingPage() {
   const createActive = hasTypedValue(createValues);
   const joinActive = hasTypedValue(joinValues);
 
-  const createDisabled = joinActive;
-  const joinDisabled = createActive;
+  const createDisabled = joinActive || busy === "join";
+  const joinDisabled = createActive || busy === "create";
 
-  const onCreateSubmit = createForm.handleSubmit(() => {
-    // UI only — wire up later
+  const onCreateSubmit = createForm.handleSubmit(async ({ playerName }) => {
+    setError(null);
+    setBusy("create");
+    try {
+      const message = await createRoomOverSocket(playerName.trim());
+      const { room_code, room_uuid, player } = message.payload;
+      saveLobbySession({
+        roomCode: room_code,
+        roomUuid: room_uuid,
+        playerId: player.player_id,
+        playerName: player.name,
+        isHost: player.is_host,
+        opponentName: null,
+      });
+      router.push(`/room/${room_code}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create room");
+    } finally {
+      setBusy(null);
+    }
   });
 
-  const onJoinSubmit = joinForm.handleSubmit(() => {
-    // UI only — wire up later
+  const onJoinSubmit = joinForm.handleSubmit(async ({ roomCode, playerName }) => {
+    setError(null);
+    setBusy("join");
+    try {
+      const message = await joinRoomOverSocket(
+        roomCode.trim().toUpperCase(),
+        playerName.trim(),
+      );
+      const { room_code, room_uuid, player, opponent } = message.payload;
+      saveLobbySession({
+        roomCode: room_code,
+        roomUuid: room_uuid,
+        playerId: player.player_id,
+        playerName: player.name,
+        isHost: player.is_host,
+        opponentName: opponent?.name ?? null,
+      });
+      router.push(`/room/${room_code}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to join room");
+    } finally {
+      setBusy(null);
+    }
   });
 
   return (
@@ -65,8 +115,16 @@ export default function LandingPage() {
           </p>
         </header>
 
+        {error ? (
+          <p
+            role="alert"
+            className="mb-6 rounded-lg border border-[#7a3b2e] bg-[#2a1612] px-4 py-3 text-center text-sm text-[#e8b4a8]"
+          >
+            {error}
+          </p>
+        ) : null}
+
         <div className="grid gap-6 md:grid-cols-2">
-          {/* Create room */}
           <section
             aria-disabled={createDisabled}
             className={`rounded-2xl border border-[#2f453c] bg-[#101916]/80 p-6 shadow-[0_24px_60px_rgba(0,0,0,0.35)] backdrop-blur-sm transition ${
@@ -103,15 +161,14 @@ export default function LandingPage() {
 
               <button
                 type="submit"
-                disabled={createDisabled || !createActive}
+                disabled={createDisabled || !createActive || busy === "create"}
                 className="w-full rounded-lg bg-[#c4a574] px-4 py-2.5 text-sm font-medium text-[#1a1510] transition hover:bg-[#d4b888] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Create room
+                {busy === "create" ? "Connecting…" : "Create room"}
               </button>
             </form>
           </section>
 
-          {/* Join room */}
           <section
             aria-disabled={joinDisabled}
             className={`rounded-2xl border border-[#2f453c] bg-[#101916]/80 p-6 shadow-[0_24px_60px_rgba(0,0,0,0.35)] backdrop-blur-sm transition ${
@@ -138,7 +195,8 @@ export default function LandingPage() {
                   type="text"
                   disabled={joinDisabled}
                   autoComplete="off"
-                  placeholder="Paste room UUID"
+                  placeholder="e.g. KXPM"
+                  maxLength={4}
                   className="w-full rounded-lg border border-[#2f453c] bg-[#0c1210] px-3 py-2.5 text-sm text-[#f2ebe0] outline-none transition placeholder:text-[#5c6b64] focus:border-[#c4a574] disabled:cursor-not-allowed"
                   {...joinForm.register("roomCode")}
                 />
@@ -164,10 +222,10 @@ export default function LandingPage() {
 
               <button
                 type="submit"
-                disabled={joinDisabled || !joinActive}
+                disabled={joinDisabled || !joinActive || busy === "join"}
                 className="w-full rounded-lg bg-[#c4a574] px-4 py-2.5 text-sm font-medium text-[#1a1510] transition hover:bg-[#d4b888] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Join room
+                {busy === "join" ? "Connecting…" : "Join room"}
               </button>
             </form>
           </section>
