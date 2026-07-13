@@ -34,10 +34,22 @@ export default function RoomPage() {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    const stored = loadLobbySession();
-    if (stored && stored.roomCode.toUpperCase() === roomCode) {
-      setSession(stored);
-    }
+    let cancelled = false;
+
+    queueMicrotask(() => {
+      const stored = loadLobbySession();
+      if (
+        !cancelled &&
+        stored &&
+        stored.roomCode.toUpperCase() === roomCode
+      ) {
+        setSession(stored);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, [roomCode]);
 
   useEffect(() => {
