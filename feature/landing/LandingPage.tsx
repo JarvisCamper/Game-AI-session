@@ -18,14 +18,11 @@ type JoinRoomForm = {
   playerName: string;
 };
 
-function hasTypedValue(values: Record<string, string>) {
-  return Object.values(values).some((value) => value.trim().length > 0);
-}
-
 export default function LandingPage() {
   const router = useRouter();
   const [busy, setBusy] = useState<"create" | "join" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [activeForm, setActiveForm] = useState<"create" | "join" | null>(null);
 
   const createForm = useForm<CreateRoomForm>({
     defaultValues: { playerName: "" },
@@ -34,14 +31,29 @@ export default function LandingPage() {
     defaultValues: { roomCode: "", playerName: "" },
   });
 
-  const createValues = createForm.watch();
-  const joinValues = joinForm.watch();
+  const createName = createForm.watch("playerName");
+  const joinCode = joinForm.watch("roomCode");
+  const joinName = joinForm.watch("playerName");
 
-  const createActive = hasTypedValue(createValues);
-  const joinActive = hasTypedValue(joinValues);
+  const canCreate = createName.trim().length > 0;
+  const canJoin = joinCode.trim().length > 0 && joinName.trim().length > 0;
 
-  const createDisabled = joinActive || busy === "join";
-  const joinDisabled = createActive || busy === "create";
+  const createLocked = activeForm === "join";
+  const joinLocked = activeForm === "create";
+
+  function focusCreate() {
+    if (activeForm === "join") {
+      joinForm.reset({ roomCode: "", playerName: "" });
+    }
+    setActiveForm("create");
+  }
+
+  function focusJoin() {
+    if (activeForm === "create") {
+      createForm.reset({ playerName: "" });
+    }
+    setActiveForm("join");
+  }
 
   const onCreateSubmit = createForm.handleSubmit(async ({ playerName }) => {
     setError(null);
@@ -110,8 +122,7 @@ export default function LandingPage() {
             Battle Lobby
           </h1>
           <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-[#a8b5ae]">
-            Create a room or join an existing one. Start typing in one form to
-            lock the other.
+            Use one form at a time — focusing the other clears the first.
           </p>
         </header>
 
@@ -126,11 +137,8 @@ export default function LandingPage() {
 
         <div className="grid gap-6 md:grid-cols-2">
           <section
-            aria-disabled={createDisabled}
             className={`rounded-2xl border border-[#2f453c] bg-[#101916]/80 p-6 shadow-[0_24px_60px_rgba(0,0,0,0.35)] backdrop-blur-sm transition ${
-              createDisabled
-                ? "pointer-events-none opacity-40"
-                : "opacity-100"
+              createLocked ? "opacity-40" : "opacity-100"
             }`}
           >
             <h2 className="font-[family-name:var(--font-geist-sans)] text-xl font-medium text-[#f2ebe0]">
@@ -151,17 +159,19 @@ export default function LandingPage() {
                 <input
                   id="create-player-name"
                   type="text"
-                  disabled={createDisabled}
                   autoComplete="off"
                   placeholder="e.g. Night Owl"
-                  className="w-full rounded-lg border border-[#2f453c] bg-[#0c1210] px-3 py-2.5 text-sm text-[#f2ebe0] outline-none transition placeholder:text-[#5c6b64] focus:border-[#c4a574] disabled:cursor-not-allowed"
-                  {...createForm.register("playerName")}
+                  onFocus={focusCreate}
+                  className="w-full rounded-lg border border-[#2f453c] bg-[#0c1210] px-3 py-2.5 text-sm text-[#f2ebe0] outline-none transition placeholder:text-[#5c6b64] focus:border-[#c4a574]"
+                  {...createForm.register("playerName", {
+                    onChange: () => focusCreate(),
+                  })}
                 />
               </div>
 
               <button
                 type="submit"
-                disabled={createDisabled || !createActive || busy === "create"}
+                disabled={!canCreate || busy !== null || createLocked}
                 className="w-full rounded-lg bg-[#c4a574] px-4 py-2.5 text-sm font-medium text-[#1a1510] transition hover:bg-[#d4b888] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {busy === "create" ? "Connecting…" : "Create room"}
@@ -170,9 +180,8 @@ export default function LandingPage() {
           </section>
 
           <section
-            aria-disabled={joinDisabled}
             className={`rounded-2xl border border-[#2f453c] bg-[#101916]/80 p-6 shadow-[0_24px_60px_rgba(0,0,0,0.35)] backdrop-blur-sm transition ${
-              joinDisabled ? "pointer-events-none opacity-40" : "opacity-100"
+              joinLocked ? "opacity-40" : "opacity-100"
             }`}
           >
             <h2 className="font-[family-name:var(--font-geist-sans)] text-xl font-medium text-[#f2ebe0]">
@@ -193,12 +202,14 @@ export default function LandingPage() {
                 <input
                   id="join-room-code"
                   type="text"
-                  disabled={joinDisabled}
                   autoComplete="off"
                   placeholder="e.g. KXPM"
                   maxLength={4}
-                  className="w-full rounded-lg border border-[#2f453c] bg-[#0c1210] px-3 py-2.5 text-sm text-[#f2ebe0] outline-none transition placeholder:text-[#5c6b64] focus:border-[#c4a574] disabled:cursor-not-allowed"
-                  {...joinForm.register("roomCode")}
+                  onFocus={focusJoin}
+                  className="w-full rounded-lg border border-[#2f453c] bg-[#0c1210] px-3 py-2.5 text-sm text-[#f2ebe0] outline-none transition placeholder:text-[#5c6b64] focus:border-[#c4a574]"
+                  {...joinForm.register("roomCode", {
+                    onChange: () => focusJoin(),
+                  })}
                 />
               </div>
 
@@ -212,17 +223,19 @@ export default function LandingPage() {
                 <input
                   id="join-player-name"
                   type="text"
-                  disabled={joinDisabled}
                   autoComplete="off"
                   placeholder="e.g. Micromanager"
-                  className="w-full rounded-lg border border-[#2f453c] bg-[#0c1210] px-3 py-2.5 text-sm text-[#f2ebe0] outline-none transition placeholder:text-[#5c6b64] focus:border-[#c4a574] disabled:cursor-not-allowed"
-                  {...joinForm.register("playerName")}
+                  onFocus={focusJoin}
+                  className="w-full rounded-lg border border-[#2f453c] bg-[#0c1210] px-3 py-2.5 text-sm text-[#f2ebe0] outline-none transition placeholder:text-[#5c6b64] focus:border-[#c4a574]"
+                  {...joinForm.register("playerName", {
+                    onChange: () => focusJoin(),
+                  })}
                 />
               </div>
 
               <button
                 type="submit"
-                disabled={joinDisabled || !joinActive || busy === "join"}
+                disabled={!canJoin || busy !== null || joinLocked}
                 className="w-full rounded-lg bg-[#c4a574] px-4 py-2.5 text-sm font-medium text-[#1a1510] transition hover:bg-[#d4b888] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {busy === "join" ? "Connecting…" : "Join room"}
