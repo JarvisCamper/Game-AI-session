@@ -1,6 +1,13 @@
 "use client";
 
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
+import {
+  createRoomOverSocket,
+  joinRoomOverSocket,
+} from "@/lib/ws/battle-socket";
+import { saveLobbySession } from "@/lib/ws/lobby-session";
 
 type CreateRoomForm = {
   playerName: string;
@@ -11,11 +18,12 @@ type JoinRoomForm = {
   playerName: string;
 };
 
-function hasTypedValue(values: Record<string, string>) {
-  return Object.values(values).some((value) => value.trim().length > 0);
-}
-
 export default function LandingPage() {
+  const router = useRouter();
+  const [busy, setBusy] = useState<"create" | "join" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [activeForm, setActiveForm] = useState<"create" | "join" | null>(null);
+
   const createForm = useForm<CreateRoomForm>({
     defaultValues: { playerName: "" },
   });
@@ -23,21 +31,75 @@ export default function LandingPage() {
     defaultValues: { roomCode: "", playerName: "" },
   });
 
-  const createValues = createForm.watch();
-  const joinValues = joinForm.watch();
+  const createName = createForm.watch("playerName");
+  const joinCode = joinForm.watch("roomCode");
+  const joinName = joinForm.watch("playerName");
 
-  const createActive = hasTypedValue(createValues);
-  const joinActive = hasTypedValue(joinValues);
+  const canCreate = createName.trim().length > 0;
+  const canJoin = joinCode.trim().length > 0 && joinName.trim().length > 0;
 
-  const createDisabled = joinActive;
-  const joinDisabled = createActive;
+  const createLocked = activeForm === "join";
+  const joinLocked = activeForm === "create";
 
-  const onCreateSubmit = createForm.handleSubmit(() => {
-    // UI only — wire up later
+  function focusCreate() {
+    if (activeForm === "join") {
+      joinForm.reset({ roomCode: "", playerName: "" });
+    }
+    setActiveForm("create");
+  }
+
+  function focusJoin() {
+    if (activeForm === "create") {
+      createForm.reset({ playerName: "" });
+    }
+    setActiveForm("join");
+  }
+
+  const onCreateSubmit = createForm.handleSubmit(async ({ playerName }) => {
+    setError(null);
+    setBusy("create");
+    try {
+      const message = await createRoomOverSocket(playerName.trim());
+      const { room_code, room_uuid, player } = message.payload;
+      saveLobbySession({
+        roomCode: room_code,
+        roomUuid: room_uuid,
+        playerId: player.player_id,
+        playerName: player.name,
+        isHost: player.is_host,
+        opponentName: null,
+      });
+      router.push(`/room/${room_code}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create room");
+    } finally {
+      setBusy(null);
+    }
   });
 
-  const onJoinSubmit = joinForm.handleSubmit(() => {
-    // UI only — wire up later
+  const onJoinSubmit = joinForm.handleSubmit(async ({ roomCode, playerName }) => {
+    setError(null);
+    setBusy("join");
+    try {
+      const message = await joinRoomOverSocket(
+        roomCode.trim().toUpperCase(),
+        playerName.trim(),
+      );
+      const { room_code, room_uuid, player, opponent } = message.payload;
+      saveLobbySession({
+        roomCode: room_code,
+        roomUuid: room_uuid,
+        playerId: player.player_id,
+        playerName: player.name,
+        isHost: player.is_host,
+        opponentName: opponent?.name ?? null,
+      });
+      router.push(`/room/${room_code}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to join room");
+    } finally {
+      setBusy(null);
+    }
   });
 
   return (
@@ -60,19 +122,23 @@ export default function LandingPage() {
             Battle Lobby
           </h1>
           <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-[#a8b5ae]">
-            Create a room or join an existing one. Start typing in one form to
-            lock the other.
+            Use one form at a time — focusing the other clears the first.
           </p>
         </header>
 
+        {error ? (
+          <p
+            role="alert"
+            className="mb-6 rounded-lg border border-[#7a3b2e] bg-[#2a1612] px-4 py-3 text-center text-sm text-[#e8b4a8]"
+          >
+            {error}
+          </p>
+        ) : null}
+
         <div className="grid gap-6 md:grid-cols-2">
-          {/* Create room */}
           <section
-            aria-disabled={createDisabled}
             className={`rounded-2xl border border-[#2f453c] bg-[#101916]/80 p-6 shadow-[0_24px_60px_rgba(0,0,0,0.35)] backdrop-blur-sm transition ${
-              createDisabled
-                ? "pointer-events-none opacity-40"
-                : "opacity-100"
+              createLocked ? "opacity-40" : "opacity-100"
             }`}
           >
             <h2 className="font-[family-name:var(--font-geist-sans)] text-xl font-medium text-[#f2ebe0]">
@@ -93,29 +159,29 @@ export default function LandingPage() {
                 <input
                   id="create-player-name"
                   type="text"
-                  disabled={createDisabled}
                   autoComplete="off"
                   placeholder="e.g. Night Owl"
-                  className="w-full rounded-lg border border-[#2f453c] bg-[#0c1210] px-3 py-2.5 text-sm text-[#f2ebe0] outline-none transition placeholder:text-[#5c6b64] focus:border-[#c4a574] disabled:cursor-not-allowed"
-                  {...createForm.register("playerName")}
+                  onFocus={focusCreate}
+                  className="w-full rounded-lg border border-[#2f453c] bg-[#0c1210] px-3 py-2.5 text-sm text-[#f2ebe0] outline-none transition placeholder:text-[#5c6b64] focus:border-[#c4a574]"
+                  {...createForm.register("playerName", {
+                    onChange: () => focusCreate(),
+                  })}
                 />
               </div>
 
               <button
                 type="submit"
-                disabled={createDisabled || !createActive}
+                disabled={!canCreate || busy !== null || createLocked}
                 className="w-full rounded-lg bg-[#c4a574] px-4 py-2.5 text-sm font-medium text-[#1a1510] transition hover:bg-[#d4b888] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Create room
+                {busy === "create" ? "Connecting…" : "Create room"}
               </button>
             </form>
           </section>
 
-          {/* Join room */}
           <section
-            aria-disabled={joinDisabled}
             className={`rounded-2xl border border-[#2f453c] bg-[#101916]/80 p-6 shadow-[0_24px_60px_rgba(0,0,0,0.35)] backdrop-blur-sm transition ${
-              joinDisabled ? "pointer-events-none opacity-40" : "opacity-100"
+              joinLocked ? "opacity-40" : "opacity-100"
             }`}
           >
             <h2 className="font-[family-name:var(--font-geist-sans)] text-xl font-medium text-[#f2ebe0]">
@@ -136,11 +202,14 @@ export default function LandingPage() {
                 <input
                   id="join-room-code"
                   type="text"
-                  disabled={joinDisabled}
                   autoComplete="off"
-                  placeholder="Paste room UUID"
-                  className="w-full rounded-lg border border-[#2f453c] bg-[#0c1210] px-3 py-2.5 text-sm text-[#f2ebe0] outline-none transition placeholder:text-[#5c6b64] focus:border-[#c4a574] disabled:cursor-not-allowed"
-                  {...joinForm.register("roomCode")}
+                  placeholder="e.g. KXPM"
+                  maxLength={4}
+                  onFocus={focusJoin}
+                  className="w-full rounded-lg border border-[#2f453c] bg-[#0c1210] px-3 py-2.5 text-sm text-[#f2ebe0] outline-none transition placeholder:text-[#5c6b64] focus:border-[#c4a574]"
+                  {...joinForm.register("roomCode", {
+                    onChange: () => focusJoin(),
+                  })}
                 />
               </div>
 
@@ -154,20 +223,22 @@ export default function LandingPage() {
                 <input
                   id="join-player-name"
                   type="text"
-                  disabled={joinDisabled}
                   autoComplete="off"
                   placeholder="e.g. Micromanager"
-                  className="w-full rounded-lg border border-[#2f453c] bg-[#0c1210] px-3 py-2.5 text-sm text-[#f2ebe0] outline-none transition placeholder:text-[#5c6b64] focus:border-[#c4a574] disabled:cursor-not-allowed"
-                  {...joinForm.register("playerName")}
+                  onFocus={focusJoin}
+                  className="w-full rounded-lg border border-[#2f453c] bg-[#0c1210] px-3 py-2.5 text-sm text-[#f2ebe0] outline-none transition placeholder:text-[#5c6b64] focus:border-[#c4a574]"
+                  {...joinForm.register("playerName", {
+                    onChange: () => focusJoin(),
+                  })}
                 />
               </div>
 
               <button
                 type="submit"
-                disabled={joinDisabled || !joinActive}
+                disabled={!canJoin || busy !== null || joinLocked}
                 className="w-full rounded-lg bg-[#c4a574] px-4 py-2.5 text-sm font-medium text-[#1a1510] transition hover:bg-[#d4b888] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Join room
+                {busy === "join" ? "Connecting…" : "Join room"}
               </button>
             </form>
           </section>
